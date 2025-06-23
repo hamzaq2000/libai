@@ -179,8 +179,16 @@ Included with libai is momo, a terminal user interface that demonstrates the lib
 The application provides real-time streaming responses with markdown rendering, tool calling support with both built-in utilities and MCP server integration, and multi-line input handling with syntax highlighting.
 
 ```bash
-# Run the demo
-./momo
+curl -sSL https://raw.githubusercontent.com/6over3/libai/main/install-momo | bash
+```
+
+```bash
+# Then run it
+momo
+```
+
+```bash
+make && ./build/dynamic/arm64/release/momo
 ```
 
 ## Tool Calling
