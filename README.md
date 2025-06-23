@@ -1,6 +1,8 @@
 <p align="center">
-  <a href="https://libai.sh">
-    <h1>libai</h1>
+ <a href="https://libai.sh">
+    <picture>
+      <img src="assets/demo.gif" alt="momo demo">
+    </picture>
   </a>
 </p>
 <p align="center">Apple Intelligence for any programming language</p>
