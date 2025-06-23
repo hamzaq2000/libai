@@ -34,13 +34,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Library version information
- */
-#define AI_BRIDGE_VERSION_MAJOR 1
-#define AI_BRIDGE_VERSION_MINOR 0
-#define AI_BRIDGE_VERSION_PATCH 0
-
-/**
  * @brief Apple Intelligence availability status codes
  */
 typedef enum {
@@ -121,17 +114,6 @@ typedef char *(*ai_bridge_tool_callback_t)(const char *parameters_json,
  * @return true if initialization succeeded, false otherwise
  */
 bool ai_bridge_init(void);
-
-/**
- * @brief Get the library version string
- *
- * Returns the version in semantic versioning format.
- *
- * @return Version string in format "major.minor.patch".
- *         **Memory ownership**: Caller must call ai_bridge_free_string() to
- * release.
- */
-char *ai_bridge_get_version(void);
 
 /**
  * @brief Check Apple Intelligence model availability

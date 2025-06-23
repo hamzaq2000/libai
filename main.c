@@ -3100,7 +3100,7 @@ char *tool_system_info(const char *parameters_json, void *user_data) {
   cJSON_AddNumberToObject(response, "smooth_fps", app.timing.smooth_fps);
 
   cJSON_AddStringToObject(response, "app_name", "MOMO CLI");
-  cJSON_AddStringToObject(response, "app_version", "0.2.0");
+  cJSON_AddStringToObject(response, "app_version", MOMO_VERSION);
 
   const char *intel_version = ai_get_version();
   char *clean_version = sanitize_utf8_string(intel_version);
@@ -3825,7 +3825,7 @@ static void draw_welcome_screen(void) {
                  COLOR_LOGO_LIGHT);
 
   tb_printf(center_x + full_momo_width / 2 - 8, logo_start_y + 6,
-            COLOR_ACCENT | TB_BOLD, COLOR_BG, "v0.2.0");
+            COLOR_ACCENT | TB_BOLD, COLOR_BG, MOMO_VERSION);
 
   int cmd_y = center_y - 3;
   tb_printf(center_x - 18, cmd_y++, COLOR_LABEL_SYSTEM | TB_BOLD, COLOR_BG,

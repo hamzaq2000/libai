@@ -64,20 +64,6 @@
 extern "C" {
 #endif
 
-/**
- * @defgroup version Library Version Information
- * @{
- */
-
-/** Library major version */
-#define AI_VERSION_MAJOR 1
-/** Library minor version */
-#define AI_VERSION_MINOR 0
-/** Library patch version */
-#define AI_VERSION_PATCH 0
-/** Library version string */
-#define AI_VERSION_STRING "1.0.0"
-
 /** @} */
 
 /**

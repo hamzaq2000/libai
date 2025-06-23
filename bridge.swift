@@ -1,20 +1,6 @@
 import Foundation
 import FoundationModels
 
-// MARK: - Library Information
-
-/// Major version number of the AI Bridge library.
-@available(macOS 26.0, *)
-public let AI_BRIDGE_VERSION_MAJOR: Int32 = 1
-
-/// Minor version number of the AI Bridge library.
-@available(macOS 26.0, *)
-public let AI_BRIDGE_VERSION_MINOR: Int32 = 0
-
-/// Patch version number of the AI Bridge library.
-@available(macOS 26.0, *)
-public let AI_BRIDGE_VERSION_PATCH: Int32 = 0
-
 // MARK: - Error Codes
 
 /// Status codes indicating the availability of Apple Intelligence models.
@@ -387,16 +373,6 @@ private struct BridgeTool: Tool {
 @_cdecl("ai_bridge_init")
 public func bridgeInit() -> Bool {
     return true
-}
-
-/// Returns the version string of the AI Bridge library.
-///
-/// - Returns: A C string containing the version number. **Memory ownership**: Caller must call `ai_bridge_free_string` to release.
-@available(macOS 26.0, *)
-@_cdecl("ai_bridge_get_version")
-public func bridgeGetVersion() -> UnsafeMutablePointer<CChar>? {
-    let version = "\(AI_BRIDGE_VERSION_MAJOR).\(AI_BRIDGE_VERSION_MINOR).\(AI_BRIDGE_VERSION_PATCH)"
-    return strdup(version)
 }
 
 // MARK: - Model Availability Functions
