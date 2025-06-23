@@ -5,6 +5,7 @@ THIRD_PARTY_DIR = third-party
 
 CC      = clang
 CFLAGS  = -O2 -std=c23 -Wall -pthread -target $(ARCH)-apple-macos$(MIN_MACOS_VERSION)
+LDFLAGS = -framework ApplicationServices -framework CoreFoundation
 SWIFTC  = swiftc
 SWIFT_FLAGS = -O -whole-module-optimization \
               -parse-as-library -emit-object -static \
@@ -48,7 +49,7 @@ $(BUILD_DIR)/libai.a: ai.c $(THIRD_PARTY_OBJECTS) | $(BUILD_DIR)
 momo: $(BUILD_DIR)/momo
 
 $(BUILD_DIR)/momo: main.c $(BUILD_DIR)/libai.a $(BUILD_DIR)/libaibridge.a | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $^ \
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ \
 		-o $@
 
 

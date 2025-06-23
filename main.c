@@ -7,6 +7,8 @@
 #define TB_OPT_READ_BUF 128
 
 #define TB_IMPL
+#include <ApplicationServices/ApplicationServices.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <locale.h>
@@ -43,6 +45,8 @@
 #define TARGET_FPS 60
 #define FRAME_TIME_US (1000000 / TARGET_FPS)
 #define MAX_FRAME_TIME_US (1000000 / 30)
+#define UTF8_PLAIN_TEXT_TYPE CFSTR("public.utf8-plain-text")
+#define PLAIN_TEXT_TYPE CFSTR("public.plain-text")
 
 #define COLOR_BG TB_DEFAULT
 #define COLOR_FG 0xE8E8E8
@@ -360,7 +364,85 @@ static bool parse_schema_directive(const char *input, char **extracted_message,
   }
 
   return true;
-};
+}
+
+static char *get_clipboard_text() {
+  PasteboardRef pasteboard;
+  OSStatus status;
+  ItemCount item_count;
+  PasteboardItemID item_id;
+  CFDataRef clipboard_data;
+  CFStringRef clipboard_string;
+  char *result = NULL;
+
+  // Create a reference to the system clipboard
+  status = PasteboardCreate(kPasteboardClipboard, &pasteboard);
+  if (status != noErr) {
+    return NULL;
+  }
+
+  // Synchronize with the current clipboard contents
+  PasteboardSynchronize(pasteboard);
+
+  // Get the number of items on the clipboard
+  status = PasteboardGetItemCount(pasteboard, &item_count);
+  if (status != noErr || item_count < 1) {
+    CFRelease(pasteboard);
+    return NULL;
+  }
+
+  // Get the first item's ID
+  status = PasteboardGetItemIdentifier(pasteboard, 1, &item_id);
+  if (status != noErr) {
+    CFRelease(pasteboard);
+    return NULL;
+  }
+
+  // Try to get text data from the clipboard
+  status = PasteboardCopyItemFlavorData(pasteboard, item_id,
+                                        UTF8_PLAIN_TEXT_TYPE, &clipboard_data);
+  if (status != noErr) {
+    // If UTF-8 fails, try plain text
+    status = PasteboardCopyItemFlavorData(pasteboard, item_id, PLAIN_TEXT_TYPE,
+                                          &clipboard_data);
+    if (status != noErr) {
+      CFRelease(pasteboard);
+      return NULL;
+    }
+  }
+
+  // Convert CFData to CFString
+  clipboard_string = CFStringCreateFromExternalRepresentation(
+      kCFAllocatorDefault, clipboard_data, kCFStringEncodingUTF8);
+
+  if (clipboard_string) {
+    // Get the length needed for C string
+    CFIndex string_length = CFStringGetLength(clipboard_string);
+    CFIndex max_size = CFStringGetMaximumSizeForEncoding(
+                           string_length, kCFStringEncodingUTF8) +
+                       1;
+
+    // Allocate memory and convert to C string
+    result = malloc(max_size);
+    if (result) {
+      Boolean success = CFStringGetCString(clipboard_string, result, max_size,
+                                           kCFStringEncodingUTF8);
+      if (!success) {
+        free(result);
+        result = NULL;
+      }
+    }
+
+    CFRelease(clipboard_string);
+  }
+
+  // Clean up
+  CFRelease(clipboard_data);
+  CFRelease(pasteboard);
+
+  return result;
+}
+
 static void free_tools_config(void);
 static void free_mcp_config(mcp_config_t *mcp);
 static char *create_tools_json_for_bridge(void);
@@ -2613,27 +2695,23 @@ static char *substitute_parameters(const char *template,
   return result;
 }
 
-char *read_from_fd(int fd)
-{
+char *read_from_fd(int fd) {
   char *buffer = NULL;
   char temp_buf[4096];
   size_t total_size = 0;
   ssize_t bytes_read;
 
-  while ((bytes_read = read(fd, temp_buf, sizeof(temp_buf) - 1)) > 0)
-  {
+  while ((bytes_read = read(fd, temp_buf, sizeof(temp_buf) - 1)) > 0) {
     temp_buf[bytes_read] = '\0';
 
     char *new_buffer = realloc(buffer, total_size + bytes_read + 1);
-    if (!new_buffer)
-    {
+    if (!new_buffer) {
       free(buffer);
       return NULL;
     }
 
     buffer = new_buffer;
-    if (total_size == 0)
-    {
+    if (total_size == 0) {
       buffer[0] = '\0';
     }
 
@@ -2641,20 +2719,16 @@ char *read_from_fd(int fd)
     total_size += bytes_read;
   }
 
-  if (!buffer)
-  {
+  if (!buffer) {
     buffer = malloc(1);
-    if (buffer)
-      buffer[0] = '\0';
+    if (buffer) buffer[0] = '\0';
   }
 
   return buffer;
 }
 
-static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
-{
-  if (!mcp || !mcp->command || strcmp(mcp->type, "stdio") != 0)
-  {
+static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json) {
+  if (!mcp || !mcp->command || strcmp(mcp->type, "stdio") != 0) {
     return strdup("{\"error\": \"Invalid MCP configuration\"}");
   }
 
@@ -2662,22 +2736,20 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
   int stdout_pipe[2];
   int stderr_pipe[2];
 
-  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0)
-  {
+  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 ||
+      pipe(stderr_pipe) != 0) {
     return strdup("{\"error\": \"Failed to create pipes\"}");
   }
 
   char **argv = malloc(sizeof(char *) * (mcp->arg_count + 2));
   argv[0] = mcp->command;
-  for (int i = 0; i < mcp->arg_count; i++)
-  {
+  for (int i = 0; i < mcp->arg_count; i++) {
     argv[i + 1] = substitute_parameters(mcp->args[i], input_json);
   }
   argv[mcp->arg_count + 1] = NULL;
 
   pid_t pid = fork();
-  if (pid == -1)
-  {
+  if (pid == -1) {
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
@@ -2685,16 +2757,14 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
     close(stderr_pipe[0]);
     close(stderr_pipe[1]);
 
-    for (int i = 1; i <= mcp->arg_count; i++)
-    {
+    for (int i = 1; i <= mcp->arg_count; i++) {
       free(argv[i]);
     }
     free(argv);
     return strdup("{\"error\": \"Failed to fork process\"}");
   }
 
-  if (pid == 0)
-  {
+  if (pid == 0) {
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
     close(stderr_pipe[0]);
@@ -2709,17 +2779,15 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
 
     execvp(mcp->command, argv);
 
-    fprintf(stderr, "Failed to execute %s: %s\n", mcp->command, strerror(errno));
+    fprintf(stderr, "Failed to execute %s: %s\n", mcp->command,
+            strerror(errno));
     exit(EXIT_FAILURE);
-  }
-  else
-  {
+  } else {
     close(stdin_pipe[0]);
     close(stdout_pipe[1]);
     close(stderr_pipe[1]);
 
-    if (input_json && strlen(input_json) > 0)
-    {
+    if (input_json && strlen(input_json) > 0) {
       ssize_t written = write(stdin_pipe[1], input_json, strlen(input_json));
       (void)written;
     }
@@ -2734,35 +2802,28 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
     int status;
     waitpid(pid, &status, 0);
 
-    for (int i = 1; i <= mcp->arg_count; i++)
-    {
+    for (int i = 1; i <= mcp->arg_count; i++) {
       free(argv[i]);
     }
     free(argv);
 
     cJSON *response = cJSON_CreateObject();
 
-    if (stdout_data && strlen(stdout_data) > 0)
-    {
+    if (stdout_data && strlen(stdout_data) > 0) {
       cJSON_AddStringToObject(response, "stdout", stdout_data);
     }
 
-    if (stderr_data && strlen(stderr_data) > 0)
-    {
+    if (stderr_data && strlen(stderr_data) > 0) {
       cJSON_AddStringToObject(response, "stderr", stderr_data);
     }
 
-    if (WIFEXITED(status))
-    {
+    if (WIFEXITED(status)) {
       int exit_code = WEXITSTATUS(status);
       cJSON_AddNumberToObject(response, "exit_code", exit_code);
-      if (exit_code != 0)
-      {
+      if (exit_code != 0) {
         cJSON_AddStringToObject(response, "error", "Tool execution failed");
       }
-    }
-    else if (WIFSIGNALED(status))
-    {
+    } else if (WIFSIGNALED(status)) {
       cJSON_AddStringToObject(response, "error", "Tool terminated by signal");
       cJSON_AddNumberToObject(response, "signal", WTERMSIG(status));
     }
@@ -2774,18 +2835,15 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
     cJSON_Delete(response);
 
     char *result = NULL;
-    if (json_string)
-    {
+    if (json_string) {
       char *sanitized = sanitize_utf8_string(json_string);
       free(json_string);
-      if (sanitized)
-      {
+      if (sanitized) {
         result = sanitized;
       }
     }
 
-    if (!result)
-    {
+    if (!result) {
       result = strdup("{\"error\": \"Failed to process tool output\"}");
     }
 
@@ -3095,7 +3153,7 @@ static void init_app(void) {
     tb_set_output_mode(TB_OUTPUT_256);
   }
 
-  tb_set_input_mode(TB_INPUT_ESC | TB_INPUT_MOUSE);
+  tb_set_input_mode(TB_INPUT_ESC | TB_INPUT_MOUSE | TB_INPUT_ALT);
 
   memset(&app, 0, sizeof(app));
   app.running = true;
@@ -3395,8 +3453,22 @@ static void handle_input(struct tb_event *ev) {
       }
       break;
 
-    case TB_KEY_ENTER:
     case TB_KEY_CTRL_J:
+      pending_escape = false;
+      if (!streaming_active &&
+          strlen(app.input_buffer) < MAX_MESSAGE_LENGTH - 1) {
+        int current_len = strlen(app.input_buffer);
+        memmove(app.input_buffer + app.input_pos + 1,
+                app.input_buffer + app.input_pos,
+                current_len - app.input_pos + 1);
+
+        app.input_buffer[app.input_pos] = '\n';
+        app.input_pos++;
+        update_input_height();
+      }
+      break;
+
+    case TB_KEY_ENTER:
       if (pending_escape) {
         app.input_buffer[0] = '\0';
         app.input_pos = 0;
@@ -3406,93 +3478,80 @@ static void handle_input(struct tb_event *ev) {
         break;
       }
 
-      if (ev->mod & TB_MOD_ALT) {
-        if (!streaming_active &&
-            strlen(app.input_buffer) < MAX_MESSAGE_LENGTH - 1) {
-          int current_len = strlen(app.input_buffer);
-          memmove(app.input_buffer + app.input_pos + 1,
-                  app.input_buffer + app.input_pos,
-                  current_len - app.input_pos + 1);
-
-          app.input_buffer[app.input_pos] = '\n';
-          app.input_pos++;
-          update_input_height();
+      if (!streaming_active && strlen(app.input_buffer) > 0) {
+        if (app.input_buffer[0] == '/') {
+          process_command(app.input_buffer);
+        } else {
+          send_message(app.input_buffer);
         }
-      } else {
-        if (!streaming_active && strlen(app.input_buffer) > 0) {
-          if (app.input_buffer[0] == '/') {
-            process_command(app.input_buffer);
-          } else {
-            send_message(app.input_buffer);
+        app.input_buffer[0] = '\0';
+        app.input_pos = 0;
+        app.input_scroll = 0;
+        update_input_height();
+      }
+      break;
+
+    case TB_KEY_CTRL_H:
+      pending_escape = false;
+      if (app.input_pos > 0) {
+        int word_start = app.input_pos;
+
+        while (word_start > 0) {
+          int prev_pos = word_start - 1;
+          while (prev_pos > 0 && (app.input_buffer[prev_pos] & 0x80) &&
+                 !(app.input_buffer[prev_pos] & 0x40)) {
+            prev_pos--;
           }
-          app.input_buffer[0] = '\0';
-          app.input_pos = 0;
-          app.input_scroll = 0;
+
+          uint32_t codepoint;
+          tb_utf8_char_to_unicode(&codepoint, app.input_buffer + prev_pos);
+
+          if (!is_word_boundary(codepoint) && codepoint != '\n') break;
+
+          word_start = prev_pos;
+        }
+
+        while (word_start > 0) {
+          int prev_pos = word_start - 1;
+          while (prev_pos > 0 && (app.input_buffer[prev_pos] & 0x80) &&
+                 !(app.input_buffer[prev_pos] & 0x40)) {
+            prev_pos--;
+          }
+
+          uint32_t codepoint;
+          tb_utf8_char_to_unicode(&codepoint, app.input_buffer + prev_pos);
+
+          if (is_word_boundary(codepoint) || codepoint == '\n') break;
+
+          word_start = prev_pos;
+        }
+
+        if (word_start < app.input_pos) {
+          memmove(app.input_buffer + word_start,
+                  app.input_buffer + app.input_pos,
+                  strlen(app.input_buffer) - app.input_pos + 1);
+
+          app.input_pos = word_start;
           update_input_height();
         }
       }
       break;
 
-    case TB_KEY_BACKSPACE:
     case TB_KEY_BACKSPACE2:
       pending_escape = false;
       if (app.input_pos > 0) {
-        if (ev->mod & TB_MOD_ALT) {
-          int word_start = app.input_pos;
+        int char_start = app.input_pos - 1;
 
-          while (word_start > 0) {
-            int prev_pos = word_start - 1;
-            while (prev_pos > 0 && (app.input_buffer[prev_pos] & 0x80) &&
-                   !(app.input_buffer[prev_pos] & 0x40)) {
-              prev_pos--;
-            }
-
-            uint32_t codepoint;
-            tb_utf8_char_to_unicode(&codepoint, app.input_buffer + prev_pos);
-
-            if (!is_word_boundary(codepoint) && codepoint != '\n') break;
-
-            word_start = prev_pos;
-          }
-
-          while (word_start > 0) {
-            int prev_pos = word_start - 1;
-            while (prev_pos > 0 && (app.input_buffer[prev_pos] & 0x80) &&
-                   !(app.input_buffer[prev_pos] & 0x40)) {
-              prev_pos--;
-            }
-
-            uint32_t codepoint;
-            tb_utf8_char_to_unicode(&codepoint, app.input_buffer + prev_pos);
-
-            if (is_word_boundary(codepoint) || codepoint == '\n') break;
-
-            word_start = prev_pos;
-          }
-
-          if (word_start < app.input_pos) {
-            memmove(app.input_buffer + word_start,
-                    app.input_buffer + app.input_pos,
-                    strlen(app.input_buffer) - app.input_pos + 1);
-
-            app.input_pos = word_start;
-            update_input_height();
-          }
-        } else {
-          int char_start = app.input_pos - 1;
-
-          while (char_start > 0 && (app.input_buffer[char_start] & 0x80) &&
-                 !(app.input_buffer[char_start] & 0x40)) {
-            char_start--;
-          }
-
-          memmove(app.input_buffer + char_start,
-                  app.input_buffer + app.input_pos,
-                  strlen(app.input_buffer) - app.input_pos + 1);
-
-          app.input_pos = char_start;
-          update_input_height();
+        while (char_start > 0 && (app.input_buffer[char_start] & 0x80) &&
+               !(app.input_buffer[char_start] & 0x40)) {
+          char_start--;
         }
+
+        memmove(app.input_buffer + char_start, app.input_buffer + app.input_pos,
+                strlen(app.input_buffer) - app.input_pos + 1);
+
+        app.input_pos = char_start;
+        update_input_height();
       }
       break;
 
@@ -3643,6 +3702,42 @@ static void handle_input(struct tb_event *ev) {
         scroll_to_bottom();
       } else {
         move_to_line_end();
+      }
+      break;
+
+    case TB_KEY_CTRL_V:
+      pending_escape = false;
+      if (!streaming_active) {
+        char *clipboard_text = get_clipboard_text();
+        if (clipboard_text && strlen(clipboard_text) > 0) {
+          int current_len = strlen(app.input_buffer);
+          int clipboard_len = strlen(clipboard_text);
+          int available_space = MAX_MESSAGE_LENGTH - 1 - current_len;
+
+          if (available_space > 0) {
+            int insert_len = (clipboard_len > available_space) ? available_space
+                                                               : clipboard_len;
+            char *sanitized_text = sanitize_utf8_string(clipboard_text);
+            if (sanitized_text) {
+              int sanitized_len = strlen(sanitized_text);
+              insert_len = (sanitized_len > available_space) ? available_space
+                                                             : sanitized_len;
+              memmove(app.input_buffer + app.input_pos + insert_len,
+                      app.input_buffer + app.input_pos,
+                      current_len - app.input_pos + 1);
+
+              memcpy(app.input_buffer + app.input_pos, sanitized_text,
+                     insert_len);
+              app.input_pos += insert_len;
+              update_input_height();
+
+              free(sanitized_text);
+            }
+          }
+        }
+        if (clipboard_text) {
+          free(clipboard_text);
+        }
       }
       break;
 
