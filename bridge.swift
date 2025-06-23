@@ -292,6 +292,7 @@ private struct ClaudeToolDefinition: Codable {
 private struct BridgeTool: Tool {
     let name: String
     let description: String
+    var parameters: GenerationSchema
     private let sessionId: UInt8
     private let toolName: String
 
@@ -300,14 +301,24 @@ private struct BridgeTool: Tool {
         self.name = definition.name
         self.toolName = definition.name
         self.description = definition.description ?? "Tool: \(definition.name)"
+
+        do {
+            if let schema = definition.input_schema {
+                let (rootSchema, dependencies) = buildSchemasFromJSON(schema)
+                self.parameters = try GenerationSchema(root: rootSchema, dependencies: dependencies)
+            } else {
+                self.parameters = GenerationSchema(type: GeneratedContent.self, properties: [])
+            }
+        } catch {
+            self.parameters = GenerationSchema(type: GeneratedContent.self, properties: [])
+        }
     }
 
-    @Generable
-    struct Arguments {
-        let parameters: GeneratedContent
+    struct Arguments: ConvertibleFromGeneratedContent {
+        let content: GeneratedContent
 
-        init(parameters: GeneratedContent = GeneratedContent(properties: [:])) {
-            self.parameters = parameters
+        init(_ content: GeneratedContent) {
+            self.content = content
         }
     }
 
@@ -320,6 +331,10 @@ private struct BridgeTool: Tool {
         return try await withCheckedThrowingContinuation { continuation in
             Task.detached {
                 do {
+                    let argumentsJsonObject = convertGeneratedContentToJSON(arguments.content)
+                    let jsonData = try JSONSerialization.data(withJSONObject: argumentsJsonObject)
+                    let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+
                     guard
                         let toolCallback = SessionManager.shared.getToolCallback(
                             sessionId: self.sessionId,
@@ -331,10 +346,6 @@ private struct BridgeTool: Tool {
                                 "Tool '\(self.toolName)' callback not registered"))
                         return
                     }
-
-                    let jsonObject = convertGeneratedContentToJSON(arguments.parameters)
-                    let jsonData = try JSONSerialization.data(withJSONObject: jsonObject)
-                    let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
 
                     let result = jsonString.withCString { cString in
                         toolCallback.callback(cString, toolCallback.userData)

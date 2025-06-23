@@ -2613,8 +2613,48 @@ static char *substitute_parameters(const char *template,
   return result;
 }
 
-static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json) {
-  if (!mcp || !mcp->command || strcmp(mcp->type, "stdio") != 0) {
+char *read_from_fd(int fd)
+{
+  char *buffer = NULL;
+  char temp_buf[4096];
+  size_t total_size = 0;
+  ssize_t bytes_read;
+
+  while ((bytes_read = read(fd, temp_buf, sizeof(temp_buf) - 1)) > 0)
+  {
+    temp_buf[bytes_read] = '\0';
+
+    char *new_buffer = realloc(buffer, total_size + bytes_read + 1);
+    if (!new_buffer)
+    {
+      free(buffer);
+      return NULL;
+    }
+
+    buffer = new_buffer;
+    if (total_size == 0)
+    {
+      buffer[0] = '\0';
+    }
+
+    strcat(buffer, temp_buf);
+    total_size += bytes_read;
+  }
+
+  if (!buffer)
+  {
+    buffer = malloc(1);
+    if (buffer)
+      buffer[0] = '\0';
+  }
+
+  return buffer;
+}
+
+static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json)
+{
+  if (!mcp || !mcp->command || strcmp(mcp->type, "stdio") != 0)
+  {
     return strdup("{\"error\": \"Invalid MCP configuration\"}");
   }
 
@@ -2622,20 +2662,22 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json) {
   int stdout_pipe[2];
   int stderr_pipe[2];
 
-  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 ||
-      pipe(stderr_pipe) != 0) {
+  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0)
+  {
     return strdup("{\"error\": \"Failed to create pipes\"}");
   }
 
   char **argv = malloc(sizeof(char *) * (mcp->arg_count + 2));
   argv[0] = mcp->command;
-  for (int i = 0; i < mcp->arg_count; i++) {
+  for (int i = 0; i < mcp->arg_count; i++)
+  {
     argv[i + 1] = substitute_parameters(mcp->args[i], input_json);
   }
   argv[mcp->arg_count + 1] = NULL;
 
   pid_t pid = fork();
-  if (pid == -1) {
+  if (pid == -1)
+  {
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
@@ -2643,15 +2685,16 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json) {
     close(stderr_pipe[0]);
     close(stderr_pipe[1]);
 
-    for (int i = 1; i <= mcp->arg_count; i++) {
+    for (int i = 1; i <= mcp->arg_count; i++)
+    {
       free(argv[i]);
     }
     free(argv);
-
     return strdup("{\"error\": \"Failed to fork process\"}");
   }
 
-  if (pid == 0) {
+  if (pid == 0)
+  {
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
     close(stderr_pipe[0]);
@@ -2664,105 +2707,89 @@ static char *execute_mcp_tool(const mcp_config_t *mcp, const char *input_json) {
     close(stdout_pipe[1]);
     close(stderr_pipe[1]);
 
-    setenv("LC_ALL", "C.UTF-8", 1);
-    setenv("LANG", "C.UTF-8", 1);
+    execvp(mcp->command, argv);
 
-    for (int i = 0; i < mcp->env_count; i++) {
-      if (mcp->env[i]) {
-        char *substituted_env = substitute_parameters(mcp->env[i], input_json);
-        putenv(substituted_env);
-      }
-    }
-
-    execv(mcp->command, argv);
-    exit(1);
-  } else {
+    fprintf(stderr, "Failed to execute %s: %s\n", mcp->command, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  else
+  {
     close(stdin_pipe[0]);
     close(stdout_pipe[1]);
     close(stderr_pipe[1]);
 
-    ssize_t written = write(stdin_pipe[1], input_json, strlen(input_json));
-    (void)written;
+    if (input_json && strlen(input_json) > 0)
+    {
+      ssize_t written = write(stdin_pipe[1], input_json, strlen(input_json));
+      (void)written;
+    }
     close(stdin_pipe[1]);
 
-    char stdout_buffer[MAX_TOOL_RESPONSE_LENGTH];
-    char stderr_buffer[MAX_TOOL_RESPONSE_LENGTH];
+    char *stdout_data = read_from_fd(stdout_pipe[0]);
+    char *stderr_data = read_from_fd(stderr_pipe[0]);
 
-    ssize_t stdout_bytes =
-        read(stdout_pipe[0], stdout_buffer, sizeof(stdout_buffer) - 1);
     close(stdout_pipe[0]);
-
-    ssize_t stderr_bytes =
-        read(stderr_pipe[0], stderr_buffer, sizeof(stderr_buffer) - 1);
     close(stderr_pipe[0]);
 
     int status;
     waitpid(pid, &status, 0);
 
-    for (int i = 1; i <= mcp->arg_count; i++) {
+    for (int i = 1; i <= mcp->arg_count; i++)
+    {
       free(argv[i]);
     }
     free(argv);
 
     cJSON *response = cJSON_CreateObject();
 
-    if (stdout_bytes > 0) {
-      stdout_buffer[stdout_bytes] = '\0';
-
-      cJSON *stdout_json = cJSON_Parse(stdout_buffer);
-      if (stdout_json) {
-        char *stdout_str = cJSON_PrintUnformatted(stdout_json);
-        cJSON_Delete(stdout_json);
-
-        cJSON *merged_json = cJSON_Parse(stdout_str);
-        if (merged_json) {
-          cJSON *child = merged_json->child;
-          while (child) {
-            cJSON *next = child->next;
-            cJSON_DetachItemViaPointer(merged_json, child);
-            cJSON_AddItemToObject(response, child->string, child);
-            child = next;
-          }
-          cJSON_Delete(merged_json);
-        } else {
-          cJSON_AddStringToObject(response, "stdout", stdout_buffer);
-        }
-
-        free(stdout_str);
-      } else {
-        cJSON_AddStringToObject(response, "stdout", stdout_buffer);
-      }
+    if (stdout_data && strlen(stdout_data) > 0)
+    {
+      cJSON_AddStringToObject(response, "stdout", stdout_data);
     }
 
-    if (stderr_bytes > 0) {
-      stderr_buffer[stderr_bytes] = '\0';
-      cJSON_AddStringToObject(response, "stderr", stderr_buffer);
+    if (stderr_data && strlen(stderr_data) > 0)
+    {
+      cJSON_AddStringToObject(response, "stderr", stderr_data);
     }
 
-    if (WIFEXITED(status)) {
-      cJSON_AddNumberToObject(response, "exit_code", WEXITSTATUS(status));
-
-      if (WEXITSTATUS(status) != 0 && stderr_bytes > 0) {
+    if (WIFEXITED(status))
+    {
+      int exit_code = WEXITSTATUS(status);
+      cJSON_AddNumberToObject(response, "exit_code", exit_code);
+      if (exit_code != 0)
+      {
         cJSON_AddStringToObject(response, "error", "Tool execution failed");
       }
-    } else if (WIFSIGNALED(status)) {
+    }
+    else if (WIFSIGNALED(status))
+    {
       cJSON_AddStringToObject(response, "error", "Tool terminated by signal");
       cJSON_AddNumberToObject(response, "signal", WTERMSIG(status));
     }
 
+    free(stdout_data);
+    free(stderr_data);
+
     char *json_string = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    if (json_string) {
+    char *result = NULL;
+    if (json_string)
+    {
       char *sanitized = sanitize_utf8_string(json_string);
       free(json_string);
-
-      if (sanitized) {
-        return sanitized;
+      if (sanitized)
+      {
+        result = sanitized;
       }
     }
 
-    return strdup("{\"error\": \"Failed to process tool output\"}");
+    if (!result)
+    {
+      result = strdup("{\"error\": \"Failed to process tool output\"}");
+    }
+
+    return result;
   }
 }
 
