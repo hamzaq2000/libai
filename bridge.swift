@@ -1097,6 +1097,7 @@ private func convertTranscriptToMessages(_ transcript: Transcript) -> [ChatMessa
                 let argumentsJson = convertGeneratedContentToJSONString(toolCall.arguments)
                 let chatToolCall = ChatMessage.ToolCall(
                     id: toolCall.id,
+                    type: "function",
                     function: ChatMessage.ToolCall.Function(
                         name: toolCall.toolName,
                         arguments: argumentsJson
@@ -1202,7 +1203,7 @@ private struct ChatMessage: Codable {
 
     struct ToolCall: Codable {
         let id: String
-        let type: String = "function"
+        let type: String
         let function: Function
 
         struct Function: Codable {
