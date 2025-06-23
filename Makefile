@@ -1,5 +1,24 @@
 MIN_MACOS_VERSION = 26.0
-ARCH := $(shell uname -m)
+
+
+ifdef CROSS_COMPILE
+    ifeq ($(CROSS_COMPILE),x86_64)
+        ARCH = x86_64
+        ARCH_FLAGS = -target x86_64-apple-macos$(MIN_MACOS_VERSION)
+        SWIFT_ARCH_FLAGS = -target x86_64-apple-macos$(MIN_MACOS_VERSION)
+    else ifeq ($(CROSS_COMPILE),arm64e)
+        ARCH = arm64e
+        ARCH_FLAGS = -target arm64e-apple-macos$(MIN_MACOS_VERSION)
+        SWIFT_ARCH_FLAGS = -target arm64e-apple-macos$(MIN_MACOS_VERSION)
+    else
+        $(error Unsupported CROSS_COMPILE target: $(CROSS_COMPILE). Supported: x86_64, arm64e)
+    endif
+else
+    ARCH := $(shell uname -m)
+    ARCH_FLAGS = -target $(ARCH)-apple-macos$(MIN_MACOS_VERSION) -march=native -mtune=native
+    SWIFT_ARCH_FLAGS = -target $(ARCH)-apple-macos$(MIN_MACOS_VERSION)
+endif
+
 BUILD_DIR = build
 THIRD_PARTY_DIR = third-party
 
@@ -26,29 +45,27 @@ CC = clang
 SWIFTC = swiftc
 
 # Base flags
-BASE_CFLAGS = -std=c23 -Wall -pthread \
-              -target $(ARCH)-apple-macos$(MIN_MACOS_VERSION) \
-              -march=native -mtune=native
+BASE_CFLAGS = -std=c23 -Wall -pthread $(ARCH_FLAGS)
 
 # Release flags
 REL_CFLAGS = $(BASE_CFLAGS) -O3 -flto -funroll-loops -fomit-frame-pointer -DNDEBUG
 REL_SWIFT_FLAGS = -Ounchecked -whole-module-optimization -parse-as-library \
-                  -module-name AIBridge -target $(ARCH)-apple-macos$(MIN_MACOS_VERSION) \
+                  -module-name AIBridge $(SWIFT_ARCH_FLAGS) \
                   -enable-library-evolution -swift-version 5
 
 # Debug flags
 DBG_CFLAGS = $(BASE_CFLAGS) -O0 -g -DDEBUG -fno-omit-frame-pointer
 DBG_SWIFT_FLAGS = -Onone -g -parse-as-library \
-                  -module-name AIBridge -target $(ARCH)-apple-macos$(MIN_MACOS_VERSION) \
+                  -module-name AIBridge $(SWIFT_ARCH_FLAGS) \
                   -enable-library-evolution -swift-version 5
 
 THIRD_PARTY_SOURCES = $(wildcard $(THIRD_PARTY_DIR)/*.c)
 
-# Object file paths organized by target/config
-STATIC_REL_OBJ_DIR = $(BUILD_DIR)/obj/static/release
-STATIC_DBG_OBJ_DIR = $(BUILD_DIR)/obj/static/debug
-DYNAMIC_REL_OBJ_DIR = $(BUILD_DIR)/obj/dynamic/release
-DYNAMIC_DBG_OBJ_DIR = $(BUILD_DIR)/obj/dynamic/debug
+# Object file paths organized by target/config/arch
+STATIC_REL_OBJ_DIR = $(BUILD_DIR)/obj/static/$(ARCH)/release
+STATIC_DBG_OBJ_DIR = $(BUILD_DIR)/obj/static/$(ARCH)/debug
+DYNAMIC_REL_OBJ_DIR = $(BUILD_DIR)/obj/dynamic/$(ARCH)/release
+DYNAMIC_DBG_OBJ_DIR = $(BUILD_DIR)/obj/dynamic/$(ARCH)/debug
 
 STATIC_REL_THIRD_PARTY_OBJS = $(THIRD_PARTY_SOURCES:$(THIRD_PARTY_DIR)/%.c=$(STATIC_REL_OBJ_DIR)/%.o)
 STATIC_DBG_THIRD_PARTY_OBJS = $(THIRD_PARTY_SOURCES:$(THIRD_PARTY_DIR)/%.c=$(STATIC_DBG_OBJ_DIR)/%.o)
@@ -94,72 +111,72 @@ $(DYNAMIC_DBG_OBJ_DIR)/ai_pic.o: ai.c | $(DYNAMIC_DBG_OBJ_DIR)
 	$(CC) $(DBG_CFLAGS) $(VERSION_DEFINES) -fPIC -c $< -o $@
 
 # Static release build
-static-rel: $(BUILD_DIR)/static/release/momo
+static-rel: $(BUILD_DIR)/static/$(ARCH)/release/momo
 
-$(BUILD_DIR)/static/release/libai.a: $(STATIC_REL_OBJ_DIR)/ai.o $(STATIC_REL_OBJ_DIR)/AIBridge.o | $(BUILD_DIR)/static/release
+$(BUILD_DIR)/static/$(ARCH)/release/libai.a: $(STATIC_REL_OBJ_DIR)/ai.o $(STATIC_REL_OBJ_DIR)/AIBridge.o | $(BUILD_DIR)/static/$(ARCH)/release
 	libtool -static -o $@ $^
 
-$(BUILD_DIR)/static/release/momo: main.c $(BUILD_DIR)/static/release/libai.a $(STATIC_REL_THIRD_PARTY_OBJS) | $(BUILD_DIR)/static/release
+$(BUILD_DIR)/static/$(ARCH)/release/momo: main.c $(BUILD_DIR)/static/$(ARCH)/release/libai.a $(STATIC_REL_THIRD_PARTY_OBJS) | $(BUILD_DIR)/static/$(ARCH)/release
 	$(CC) $(REL_CFLAGS) $(VERSION_DEFINES) $(MOMO_VERSION_DEFINES) \
 		-framework ApplicationServices -framework CoreFoundation \
-		$(BUILD_DIR)/static/release/libai.a $(STATIC_REL_THIRD_PARTY_OBJS) -o $@ $<
+		$(BUILD_DIR)/static/$(ARCH)/release/libai.a $(STATIC_REL_THIRD_PARTY_OBJS) -o $@ $<
 
 # Static debug build
-static-dbg: $(BUILD_DIR)/static/debug/momo
+static-dbg: $(BUILD_DIR)/static/$(ARCH)/debug/momo
 
-$(BUILD_DIR)/static/debug/libai.a: $(STATIC_DBG_OBJ_DIR)/ai.o $(STATIC_DBG_OBJ_DIR)/AIBridge.o | $(BUILD_DIR)/static/debug
+$(BUILD_DIR)/static/$(ARCH)/debug/libai.a: $(STATIC_DBG_OBJ_DIR)/ai.o $(STATIC_DBG_OBJ_DIR)/AIBridge.o | $(BUILD_DIR)/static/$(ARCH)/debug
 	libtool -static -o $@ $^
 
-$(BUILD_DIR)/static/debug/momo: main.c $(BUILD_DIR)/static/debug/libai.a $(STATIC_DBG_THIRD_PARTY_OBJS) | $(BUILD_DIR)/static/debug
+$(BUILD_DIR)/static/$(ARCH)/debug/momo: main.c $(BUILD_DIR)/static/$(ARCH)/debug/libai.a $(STATIC_DBG_THIRD_PARTY_OBJS) | $(BUILD_DIR)/static/$(ARCH)/debug
 	$(CC) $(DBG_CFLAGS) $(VERSION_DEFINES) $(MOMO_VERSION_DEFINES) \
 		-framework ApplicationServices -framework CoreFoundation \
-		$(BUILD_DIR)/static/debug/libai.a $(STATIC_DBG_THIRD_PARTY_OBJS) -o $@ $<
+		$(BUILD_DIR)/static/$(ARCH)/debug/libai.a $(STATIC_DBG_THIRD_PARTY_OBJS) -o $@ $<
 
 # Dynamic release build
-dynamic-rel: $(BUILD_DIR)/dynamic/release/momo
+dynamic-rel: $(BUILD_DIR)/dynamic/$(ARCH)/release/momo
 
-$(BUILD_DIR)/dynamic/release/libaibridge.dylib: bridge.swift | $(BUILD_DIR)/dynamic/release
+$(BUILD_DIR)/dynamic/$(ARCH)/release/libaibridge.dylib: bridge.swift | $(BUILD_DIR)/dynamic/$(ARCH)/release
 	$(SWIFTC) $(REL_SWIFT_FLAGS) -emit-library \
 		-Xlinker -install_name -Xlinker @rpath/libaibridge.dylib \
 		-Xlinker -current_version -Xlinker $(VERSION) \
 		-Xlinker -compatibility_version -Xlinker $(COMPATIBILITY_VERSION) \
 		-o $@ $<
 
-$(BUILD_DIR)/dynamic/release/libai.dylib: $(DYNAMIC_REL_OBJ_DIR)/ai_pic.o $(BUILD_DIR)/dynamic/release/libaibridge.dylib | $(BUILD_DIR)/dynamic/release
+$(BUILD_DIR)/dynamic/$(ARCH)/release/libai.dylib: $(DYNAMIC_REL_OBJ_DIR)/ai_pic.o $(BUILD_DIR)/dynamic/$(ARCH)/release/libaibridge.dylib | $(BUILD_DIR)/dynamic/$(ARCH)/release
 	$(CC) $(REL_CFLAGS) -fPIC -dynamiclib -install_name @rpath/libai.dylib \
 		-current_version $(VERSION) -compatibility_version $(COMPATIBILITY_VERSION) \
-		-L$(BUILD_DIR)/dynamic/release -laibridge -o $@ $(DYNAMIC_REL_OBJ_DIR)/ai_pic.o
-	install_name_tool -change $(BUILD_DIR)/dynamic/release/libaibridge.dylib @rpath/libaibridge.dylib $@
+		-L$(BUILD_DIR)/dynamic/$(ARCH)/release -laibridge -o $@ $(DYNAMIC_REL_OBJ_DIR)/ai_pic.o
+	install_name_tool -change $(BUILD_DIR)/dynamic/$(ARCH)/release/libaibridge.dylib @rpath/libaibridge.dylib $@
 
-$(BUILD_DIR)/dynamic/release/momo: main.c $(BUILD_DIR)/dynamic/release/libai.dylib $(BUILD_DIR)/dynamic/release/libaibridge.dylib $(DYNAMIC_REL_THIRD_PARTY_OBJS) | $(BUILD_DIR)/dynamic/release
+$(BUILD_DIR)/dynamic/$(ARCH)/release/momo: main.c $(BUILD_DIR)/dynamic/$(ARCH)/release/libai.dylib $(BUILD_DIR)/dynamic/$(ARCH)/release/libaibridge.dylib $(DYNAMIC_REL_THIRD_PARTY_OBJS) | $(BUILD_DIR)/dynamic/$(ARCH)/release
 	$(CC) $(REL_CFLAGS) $(VERSION_DEFINES) $(MOMO_VERSION_DEFINES) \
-		-L$(BUILD_DIR)/dynamic/release -lai -laibridge \
+		-L$(BUILD_DIR)/dynamic/$(ARCH)/release -lai -laibridge \
 		-framework ApplicationServices -framework CoreFoundation \
 		-Wl,-rpath,@executable_path $(DYNAMIC_REL_THIRD_PARTY_OBJS) -o $@ $<
-	install_name_tool -change $(BUILD_DIR)/dynamic/release/libaibridge.dylib @rpath/libaibridge.dylib $@
+	install_name_tool -change $(BUILD_DIR)/dynamic/$(ARCH)/release/libaibridge.dylib @rpath/libaibridge.dylib $@
 
 # Dynamic debug build
-dynamic-dbg: $(BUILD_DIR)/dynamic/debug/momo
+dynamic-dbg: $(BUILD_DIR)/dynamic/$(ARCH)/debug/momo
 
-$(BUILD_DIR)/dynamic/debug/libaibridge.dylib: bridge.swift | $(BUILD_DIR)/dynamic/debug
+$(BUILD_DIR)/dynamic/$(ARCH)/debug/libaibridge.dylib: bridge.swift | $(BUILD_DIR)/dynamic/$(ARCH)/debug
 	$(SWIFTC) $(DBG_SWIFT_FLAGS) -emit-library \
 		-Xlinker -install_name -Xlinker @rpath/libaibridge.dylib \
 		-Xlinker -current_version -Xlinker $(VERSION) \
 		-Xlinker -compatibility_version -Xlinker $(COMPATIBILITY_VERSION) \
 		-o $@ $<
 
-$(BUILD_DIR)/dynamic/debug/libai.dylib: $(DYNAMIC_DBG_OBJ_DIR)/ai_pic.o $(BUILD_DIR)/dynamic/debug/libaibridge.dylib | $(BUILD_DIR)/dynamic/debug
+$(BUILD_DIR)/dynamic/$(ARCH)/debug/libai.dylib: $(DYNAMIC_DBG_OBJ_DIR)/ai_pic.o $(BUILD_DIR)/dynamic/$(ARCH)/debug/libaibridge.dylib | $(BUILD_DIR)/dynamic/$(ARCH)/debug
 	$(CC) $(DBG_CFLAGS) -fPIC -dynamiclib -install_name @rpath/libai.dylib \
 		-current_version $(VERSION) -compatibility_version $(COMPATIBILITY_VERSION) \
-		-L$(BUILD_DIR)/dynamic/debug -laibridge -o $@ $(DYNAMIC_DBG_OBJ_DIR)/ai_pic.o
-	install_name_tool -change $(BUILD_DIR)/dynamic/debug/libaibridge.dylib @rpath/libaibridge.dylib $@
+		-L$(BUILD_DIR)/dynamic/$(ARCH)/debug -laibridge -o $@ $(DYNAMIC_DBG_OBJ_DIR)/ai_pic.o
+	install_name_tool -change $(BUILD_DIR)/dynamic/$(ARCH)/debug/libaibridge.dylib @rpath/libaibridge.dylib $@
 
-$(BUILD_DIR)/dynamic/debug/momo: main.c $(BUILD_DIR)/dynamic/debug/libai.dylib $(BUILD_DIR)/dynamic/debug/libaibridge.dylib $(DYNAMIC_DBG_THIRD_PARTY_OBJS) | $(BUILD_DIR)/dynamic/debug
+$(BUILD_DIR)/dynamic/$(ARCH)/debug/momo: main.c $(BUILD_DIR)/dynamic/$(ARCH)/debug/libai.dylib $(BUILD_DIR)/dynamic/$(ARCH)/debug/libaibridge.dylib $(DYNAMIC_DBG_THIRD_PARTY_OBJS) | $(BUILD_DIR)/dynamic/$(ARCH)/debug
 	$(CC) $(DBG_CFLAGS) $(VERSION_DEFINES) $(MOMO_VERSION_DEFINES) \
-		-L$(BUILD_DIR)/dynamic/debug -lai -laibridge \
+		-L$(BUILD_DIR)/dynamic/$(ARCH)/debug -lai -laibridge \
 		-framework ApplicationServices -framework CoreFoundation \
 		-Wl,-rpath,@executable_path $(DYNAMIC_DBG_THIRD_PARTY_OBJS) -o $@ $<
-	install_name_tool -change $(BUILD_DIR)/dynamic/debug/libaibridge.dylib @rpath/libaibridge.dylib $@
+	install_name_tool -change $(BUILD_DIR)/dynamic/$(ARCH)/debug/libaibridge.dylib @rpath/libaibridge.dylib $@
 
 # Directory creation
 $(STATIC_REL_OBJ_DIR):
@@ -174,16 +191,16 @@ $(DYNAMIC_REL_OBJ_DIR):
 $(DYNAMIC_DBG_OBJ_DIR):
 	@mkdir -p $@
 
-$(BUILD_DIR)/static/release:
+$(BUILD_DIR)/static/$(ARCH)/release:
 	@mkdir -p $@
 
-$(BUILD_DIR)/static/debug:
+$(BUILD_DIR)/static/$(ARCH)/debug:
 	@mkdir -p $@
 
-$(BUILD_DIR)/dynamic/release:
+$(BUILD_DIR)/dynamic/$(ARCH)/release:
 	@mkdir -p $@
 
-$(BUILD_DIR)/dynamic/debug:
+$(BUILD_DIR)/dynamic/$(ARCH)/debug:
 	@mkdir -p $@
 
 clean:
