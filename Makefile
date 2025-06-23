@@ -72,7 +72,7 @@ STATIC_DBG_THIRD_PARTY_OBJS = $(THIRD_PARTY_SOURCES:$(THIRD_PARTY_DIR)/%.c=$(STA
 DYNAMIC_REL_THIRD_PARTY_OBJS = $(THIRD_PARTY_SOURCES:$(THIRD_PARTY_DIR)/%.c=$(DYNAMIC_REL_OBJ_DIR)/%.o)
 DYNAMIC_DBG_THIRD_PARTY_OBJS = $(THIRD_PARTY_SOURCES:$(THIRD_PARTY_DIR)/%.c=$(DYNAMIC_DBG_OBJ_DIR)/%.o)
 
-.PHONY: all clean static-rel static-dbg dynamic-rel dynamic-dbg
+.PHONY: all clean static-rel static-dbg dynamic-rel dynamic-dbg print-version print-momo-version
 
 all: dynamic-rel
 
@@ -205,3 +205,9 @@ $(BUILD_DIR)/dynamic/$(ARCH)/debug:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+print-version:
+	@echo $(VERSION)
+
+print-momo-version:
+	@echo $(MOMO_VERSION)

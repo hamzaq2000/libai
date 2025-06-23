@@ -18,7 +18,16 @@ A C library that provides access to Apple Intelligence on-device Foundation mode
 
 libai bridges Apple's FoundationModels framework through a C interface, enabling developers to integrate Apple Intelligence capabilities into applications written in C, C++, Python, Rust, Go, or any language that supports C bindings.
 
-The library provides direct access to on-device AI models without requiring network connectivity or external API calls. All processing occurs locally on the user's device.
+The library provides direct access to on-device AI models without requiring network connectivity or external API calls. All processing occurs locally on the user's device. 
+
+The library provides direct access to on-device AI models without requiring network connectivity or external API calls. All processing occurs locally on the user's device. It supports Intel Macs, Apple Silicon devices including MacBooks, iPhones, and iPads, as well as Apple Vision Pro.
+Supported platforms:
+
+- iOS 26.0+
+- iPadOS 26.0+
+- Mac Catalyst 26.0+
+- macOS 26.0+ (Intel and Apple Silicon)
+- visionOS 26.0+
 
 ## Features
 
@@ -236,6 +245,12 @@ if (!response) {
 ## Documentation
 
 API documentation appears in the header files with parameter descriptions, return value specifications, and memory ownership requirements. See `ai.h` for the complete API reference.
+
+## Technical Considerations
+
+The underlying Apple Intelligence models operate with a 4096 token context limit. While session chaining can help manage longer conversations, developers should carefully consider this constraint in their implementation design.
+
+Looking forward, as on-device AI models expand to additional platforms like Windows and Android, this library is designed to support those ecosystems through a unified abstraction layer.
 
 ---
 
