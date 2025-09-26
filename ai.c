@@ -230,7 +230,10 @@ ai_session_id_t ai_create_session(ai_context_t *context,
 
   ai_bridge_session_id_t bridge_session =
       ai_bridge_create_session(config->instructions, config->tools_json,
-                               config->enable_guardrails, config->prewarm);
+                               config->enable_guardrails, true, // enable_history
+                               false, // enable_structured_responses
+                               NULL,  // default_schema_json
+                               config->prewarm);
 
   if (bridge_session == AI_BRIDGE_INVALID_ID) {
     set_error(context, AI_ERROR_GENERATION, "Failed to create bridge session");

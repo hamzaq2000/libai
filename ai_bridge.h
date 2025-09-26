@@ -173,8 +173,12 @@ char *ai_bridge_get_supported_language(int32_t index);
  * @param tools_json Optional JSON array defining available tools in Claude tool
  * format. Can be NULL. Example: [{"name": "calculator", "description": "...",
  * "input_schema": {...}}]
- * @param enable_guardrails Whether to enable content safety filtering and
- * guardrails
+ * @param enable_guardrails Whether to enable content safety filtering (currently
+ * ignored - guardrails are always enabled)
+ * @param enable_history Whether to maintain conversation history
+ * @param enable_structured_responses Whether to enable structured JSON responses
+ * @param default_schema_json Optional default JSON schema for structured responses.
+ * Can be NULL.
  * @param prewarm Whether to preload session resources for faster first response
  * @return Session identifier for use with other functions, or
  * AI_BRIDGE_INVALID_ID on failure
@@ -186,6 +190,9 @@ char *ai_bridge_get_supported_language(int32_t index);
 ai_bridge_session_id_t ai_bridge_create_session(const char *instructions,
                                                 const char *tools_json,
                                                 bool enable_guardrails,
+                                                bool enable_history,
+                                                bool enable_structured_responses,
+                                                const char *default_schema_json,
                                                 bool prewarm);
 
 /**

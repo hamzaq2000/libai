@@ -47,17 +47,26 @@ SWIFTC = swiftc
 # Base flags
 BASE_CFLAGS = -std=c23 -Wall -pthread $(ARCH_FLAGS)
 
+# SDK path
+SDK_PATH = $(shell xcrun --show-sdk-path)
+
 # Release flags
 REL_CFLAGS = $(BASE_CFLAGS) -O3 -flto -funroll-loops -fomit-frame-pointer -DNDEBUG
 REL_SWIFT_FLAGS = -Ounchecked -whole-module-optimization -parse-as-library \
                   -module-name AIBridge $(SWIFT_ARCH_FLAGS) \
-                  -enable-library-evolution -swift-version 5
+                  -enable-library-evolution \
+                  -sdk $(SDK_PATH) \
+                  -F$(SDK_PATH)/System/Library/Frameworks \
+                  -Xlinker -framework -Xlinker FoundationModels
 
 # Debug flags
 DBG_CFLAGS = $(BASE_CFLAGS) -O0 -g -DDEBUG -fno-omit-frame-pointer
 DBG_SWIFT_FLAGS = -Onone -g -parse-as-library \
                   -module-name AIBridge $(SWIFT_ARCH_FLAGS) \
-                  -enable-library-evolution -swift-version 5
+                  -enable-library-evolution \
+                  -sdk $(SDK_PATH) \
+                  -F$(SDK_PATH)/System/Library/Frameworks \
+                  -Xlinker -framework -Xlinker FoundationModels
 
 THIRD_PARTY_SOURCES = $(wildcard $(THIRD_PARTY_DIR)/*.c)
 
