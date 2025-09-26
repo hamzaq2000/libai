@@ -17,10 +17,10 @@ clang -o chat chat.c -L. -Wl,-rpath,build/dynamic/arm64/release -lpthread
 
 ## Run
 ```sh
-# Chat through Python wrapper
+# Chat through Python
 python3 chat_minimal.py
 python3 chat.py
 
-# Run C programs
+# Chat through C
 ./chat
 ```

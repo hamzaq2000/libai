@@ -58,8 +58,8 @@ from ai_bridge import AIBridge
 bridge = AIBridge()
 session = bridge.create_session(
     instructions=(
-        "You are a helpful, friendly, and knowledgeable assistant. "
-        "Provide clear, concise, and accurate responses. "
+        "You are a helpful, friendly, and knowledgeable assistant."
+        "Provide clear, concise, and accurate responses."
         "Be conversational while remaining professional."
     ),
     enable_history=True
