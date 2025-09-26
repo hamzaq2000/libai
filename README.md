@@ -1,5 +1,5 @@
 # Apple Foundation Models Python Wrapper
-Forked from [https://github.com/6over3/libai](https://github.com/6over3/libai).
+Forked from [https://github.com/6over3/libai](https://github.com/6over3/libai)
 ```sh
 # Build libs
 make clean && make
